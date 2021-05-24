@@ -162,6 +162,7 @@ export default class ReactionMenu {
   }
 
   public close() {
+    this.messageChanging = true;
     this.client.off('messageReactionAdd', this.reactionHandlerInstance);
     this.menuMessage?.delete();
     this.originalMessage.delete();
@@ -176,6 +177,10 @@ export default class ReactionMenu {
     if (this.users.includes(user))
       this.users = this.users.filter(e => e !== user);
     return this;
+  }
+
+  public removeAllUsers() {
+    this.users = [];
   }
 
   public addState(state: string, opts: ReactionMenuStateArg) {
@@ -198,6 +203,9 @@ export default class ReactionMenu {
         Object.keys(reaction)[0],
         reaction[Object.keys(reaction)[0]]
       );
+    if (this.state === state) {
+      this.addReactions([Object.keys(reaction)[0]]);
+    }
     return this;
   }
 
@@ -208,6 +216,9 @@ export default class ReactionMenu {
     if (!this.states.get(state)?.reactions.has(emoji.toString()))
       throw new Error(`Emoji '${emoji.toString()}' does not exist`);
     this.states.get(state)?.reactions.delete(emoji.toString());
+    if (this.state === state) {
+      this.menuMessage?.removeReactionEmoji(emoji.toString());
+    }
     return this;
   }
 

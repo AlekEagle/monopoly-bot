@@ -1,7 +1,10 @@
 import Map from 'collections/map';
-import { GuildTextableChannel, Member, Message } from 'eris';
+import { Guild, GuildTextableChannel, Member, Message } from 'eris';
 import MonopolyMap from './monopoly-data/map.json';
-import ReactionMenu, { ReactionMenuStateArg } from './ReactionMenu';
+import ReactionMenu, {
+  ReactionEmoji,
+  ReactionMenuStateArg
+} from './ReactionMenu';
 
 class Player {
   public member: Member;
@@ -18,6 +21,26 @@ class Player {
   }
 }
 
+function rollDice() {
+  return (Math.floor(Math.random() * 100000) % 6) + 1;
+}
+
+class DiceRoll {
+  public dice: number[];
+
+  public get equal() {
+    return this.dice.every(v => v === this.dice[0]);
+  }
+
+  public get sum() {
+    return this.dice.reduce((a, b) => a + b);
+  }
+
+  constructor(count: number = 2) {
+    this.dice = new Array(count).fill(rollDice());
+  }
+}
+
 export default class Game {
   private map = { ...MonopolyMap };
   private players: Map<string, Player> = new Map();
@@ -26,6 +49,7 @@ export default class Game {
   private active = false;
   private action = false;
   private reactionMenu?: ReactionMenu;
+  private curDiceRoll?: DiceRoll;
 
   constructor(msg: Message<GuildTextableChannel>) {
     this.owner = msg.author.id;
@@ -62,7 +86,7 @@ export default class Game {
           '▶',
           async (message: Message<GuildTextableChannel>, user: Member) => {
             if (this.players.size < 2) {
-              this.reactionMenu?.setState('notEnoughPlayers');
+              this.reactionMenu?.setState('idleGame');
             } else this.reactionMenu?.setState('idleGame');
           }
         ],
@@ -75,11 +99,22 @@ export default class Game {
         [
           '🔚',
           async (message: Message<GuildTextableChannel>, user: Member) => {
-            this.removePlayer(user.id);
             let dmC = await user.user.getDMChannel();
-            await dmC.createMessage(
-              'Aww, sorry to see you go, come play again sometime!'
-            );
+            if (this.owner !== user.id) {
+              this.removePlayer(user.id);
+              await dmC.createMessage(
+                'Aww, sorry to see you go, come play again sometime!'
+              );
+            } else {
+              await dmC.createMessage({
+                embed: {
+                  title: "You can't leave.",
+                  color: 0xff0000,
+                  description:
+                    "You can't leave the game you own! You'll have to "
+                }
+              });
+            }
           }
         ],
         [
@@ -120,6 +155,8 @@ export default class Game {
       },
       reactions: new Map()
     });
+    this.reactionMenu.addState('idleGame', this.gameIdleState);
+    this.reactionMenu.addState('diceRoll', this.diceRollState);
   }
 
   private playerList(): string {
@@ -198,15 +235,68 @@ export default class Game {
 
   private gameIdleState: ReactionMenuStateArg = {
     message: () => {
+      this.reactionMenu?.removeAllUsers();
+      this.reactionMenu?.addUser(this.getCurrentPlayer().member.id);
       return {
         content: this.playerListOrdered(),
         embed: {
           title: 'Monopoly',
           color: 0x36393f,
-          description: 'lol'
+          description: 'lol',
+          footer: {
+            text: 'The owner can use ⤵ at any time to bring the game to the bottom of chat.'
+          }
         }
       };
     },
-    reactions: new Map([])
+    reactions: new Map([
+      [
+        '🎲',
+        async (msg: Message<GuildTextableChannel>, user: Member) => {
+          this.reactionMenu?.setState('diceRoll');
+        }
+      ],
+      [
+        '⤵',
+        async (message: Message<GuildTextableChannel>, user: Member) => {
+          this.reactionMenu?.newMenuMessage();
+        }
+      ],
+      [
+        '📧',
+        async (message: Message<GuildTextableChannel>, user: Member) => {
+          this.reactionMenu?.setState('tradeStart');
+        }
+      ],
+      [
+        new ReactionEmoji('bankrupt', '593118614031171586'),
+        async (message: Message<GuildTextableChannel>, user: Member) => {
+          this.reactionMenu?.setState('bankrupt');
+        }
+      ],
+      [
+        'ℹ',
+        async (message: Message<GuildTextableChannel>, user: Member) => {
+          //TODO: Send player info.
+        }
+      ]
+    ])
   };
+
+  private diceRollState: ReactionMenuStateArg = {
+    message: () => {
+      this.curDiceRoll = new DiceRoll();
+      setTimeout(() => this.reactionMenu?.setState('move'), 2500);
+      return {
+        embed: {
+          title: 'Rolling Dice... <a:loading1:470030932775272469>'
+        }
+      };
+    },
+    reactions: new Map()
+  };
+
+  private async movePlayer(player: Player) {
+    if (player.curLoc === -1) return;
+  }
 }
