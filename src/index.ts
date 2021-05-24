@@ -26,11 +26,7 @@ client.registerCommand(
 
 client.connect();
 
-const thing = new CyclicArray<CyclicArray<CyclicArray<number>>>(50);
-thing.fill(
-  new CyclicArray<CyclicArray<number>>(5).fill(
-    new CyclicArray<number>(5).fill(1)
-  )
-);
-console.log(thing);
-console.log(thing.flat(1));
+const thing = new CyclicArray<number>(50);
+for (let i = 0; i < thing.length; i++) {
+  thing[i] = i+1;
+}
