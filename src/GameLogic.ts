@@ -1,5 +1,6 @@
 import Map from 'collections/map';
 import { Guild, GuildTextableChannel, Member, Message } from 'eris';
+import CyclicArray from './CyclicArray';
 import MonopolyMap from './monopoly-data/map.json';
 import ReactionMenu, {
   ReactionEmoji,
@@ -43,8 +44,7 @@ class DiceRoll {
 
 export default class Game {
   private map = { ...MonopolyMap };
-  private players: Map<string, Player> = new Map();
-  private currentPlayer = 0;
+  private players: CyclicArray<Player> = new CyclicArray();
   private owner: string;
   private active = false;
   private action = false;
@@ -53,7 +53,7 @@ export default class Game {
 
   constructor(msg: Message<GuildTextableChannel>) {
     this.owner = msg.author.id;
-    this.players.set(this.owner, new Player(msg.member));
+    this.players.push(new Player(msg.member));
 
     this.reactionMenu = new ReactionMenu(msg, {
       msgContent: () => {
@@ -85,7 +85,7 @@ export default class Game {
         [
           '▶',
           async (message: Message<GuildTextableChannel>, user: Member) => {
-            if (this.players.size < 2) {
+            if (this.players.length < 2) {
               this.reactionMenu?.setState('idleGame');
             } else this.reactionMenu?.setState('idleGame');
           }
@@ -160,44 +160,17 @@ export default class Game {
   }
 
   private playerList(): string {
-    let plyrs = new Array(4).fill('Empty Slot');
-    let plyrsVals = Array.from(this.players.values());
-    for (let i = 0; i < this.players.size; i++) {
-      plyrs[i] = `${i + 1}. ${plyrsVals[i].member.mention}`;
+    let plyrs = new Array(4).fill('Empty Slot'),
+      i = 0;
+    for (let plyr of this.players) {
+      plyrs[i] = `${i + 1}. ${plyr?.member.mention}`;
+      i++;
     }
-    return plyrs.join('\n');
-  }
-
-  private playerListOrdered(): string {
-    let plyrs = Array.from(this.players.entries());
-    let plyrsOrdered = [];
-    let curInd = this.currentPlayer;
-    for (let i = 0; i < this.players.size; i++) {
-      plyrsOrdered.push(plyrs[curInd++]);
-      if (plyrs[curInd] === undefined) curInd = 0;
-    }
-    let list = plyrsOrdered.map((v, i, s) => {
-      switch (i) {
-        case 0:
-          return `${v[1].member.mention}'s turn`;
-        case 1:
-          return `${v[1].member.mention} is up next`;
-        case 2:
-          return `${v[1].member.mention} is on deck`;
-        case 3:
-          return `${v[1].member.mention} is in the hole`;
-      }
-    });
-
-    return list.join('\n');
-  }
-
-  private getCurrentPlayer(): Player {
-    return Array.from(this.players.values())[this.currentPlayer];
+    return plyrs.filter(a => a !== 'Empty Slot').join('\n');
   }
 
   private async nextPlayer(): Promise<void> {
-    if (++this.currentPlayer === this.players.size) this.currentPlayer = 0;
+    this.players.cycle();
   }
 
   private async addPlayer(mem: Member): Promise<void> {
@@ -212,7 +185,7 @@ export default class Game {
       });
       return;
     }
-    if (this.players.has(mem.id)) {
+    if (this.players.some(v => v?.member.id === mem.id)) {
       await dmC.createMessage({
         embed: {
           title: "You're already in the game silly!",
@@ -222,23 +195,22 @@ export default class Game {
       });
       return;
     }
-    this.players.set(mem.id, new Player(mem));
+    this.players.push(new Player(mem));
     return;
   }
 
   private async removePlayer(id: string): Promise<void> {
-    if (!this.players.has(id)) throw new Error('User not found.');
-    this.players.delete(id);
-    if (this.players.size === this.currentPlayer) this.currentPlayer = 0;
+    if (!this.players.some(v => v?.member.id === id)) throw new Error('User not found.');
+    this.players = this.players.filter(v => v?.member.id !== id);
     return;
   }
 
   private gameIdleState: ReactionMenuStateArg = {
     message: () => {
       this.reactionMenu?.removeAllUsers();
-      this.reactionMenu?.addUser(this.getCurrentPlayer().member.id);
+      this.reactionMenu?.addUser((this.players[0] as Player).member.id);
       return {
-        content: this.playerListOrdered(),
+        content: this.playerList(),
         embed: {
           title: 'Monopoly',
           color: 0x36393f,

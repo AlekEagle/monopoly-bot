@@ -26,7 +26,3 @@ client.registerCommand(
 
 client.connect();
 
-const thing = new CyclicArray<number>(50);
-for (let i = 0; i < thing.length; i++) {
-  thing[i] = i+1;
-}
